@@ -1,0 +1,570 @@
+<?php
+	$this->headLink()->appendStylesheet('/public/css/bootstrap-datetimepicker/bootstrap-datetimepicker.min.css');
+	$this->headLink()->appendStylesheet('/public/css/chosen/select2.min.css');
+	$this->headLink()->appendStylesheet('/public/css/confirm/confirm.min.css');
+	$this->headLink()->appendStylesheet('https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-grid.css');
+	$this->headLink()->appendStylesheet('https://cdn.jsdelivr.net/npm/ag-grid-community/styles/ag-theme-alpine.css');
+	$this->headLink()->appendStylesheet('/public/css/jQuery.countdownTimer/jQuery.countdownTimer.css');
+	$this->headLink()->appendStylesheet('/public/css/views/tables/index.css');
+	echo $this->headLink();
+
+	$this->headScript()->appendFile('/public/js/amcharts4/core.js');
+	$this->headScript()->appendFile('/public/js/amcharts4/charts.js');
+	$this->headScript()->appendFile('/public/js/amcharts4/lang/vi_VN.js');
+	$this->headScript()->appendFile('/public/js/amcharts4/themes/animated.js');
+	$this->headScript()->appendFile('/public/js/bootstrap-datetimepicker/bootstrap-datetimepicker.min.js');
+	$this->headScript()->appendFile('/public/js/chosen/select2.min.js');
+	$this->headScript()->appendFile('/public/js/confirm/confirm.min.js');
+	$this->headScript()->appendFile('https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.noStyle.js');
+	$this->headScript()->appendFile('/public/js/jQuery.countdownTimer/jQuery.countdownTimer.js');
+	echo $this->headScript();
+
+	$firsttime = $this->formText('firsttime', null, [
+		'class' => 'form-control datetime-picker',
+		'placeholder' => 'From: not filtered',
+		'autocomplete' => 'off',
+		'readonly' => true,
+		'style' => 'cursor: pointer;'
+	]);
+	$lasttime = $this->formText('lasttime', null, [
+		'class' => 'form-control datetime-picker',
+		'placeholder' => 'To: not filtered',
+		'autocomplete' => 'off',
+		'readonly' => true,
+		'style' => 'cursor: pointer;'
+	]);
+?>
+<!-- ... (phần HTML giữ nguyên) ... -->
+<form id="form" name="appForm" method="post" enctype="multipart/form-data">
+	<!-- ... (rest of the form content remains unchanged) ... -->
+	<div class="row">
+		<div class="col-sm-12">
+			<div class="portlet light" style="margin-bottom: 4px;">
+				<div class="portlet-title" style="margin-bottom: -10px; min-height: 46px;">
+					<div class="caption" style="width: 100%;">
+						<span>
+							<span class="caption-subject bold uppercase">
+								<i class="fa fa-chevron-circle-up arrow-filters" style="cursor: pointer;"></i> Filters :: 
+								<span id="state">Unapplied</span>
+							</span>
+							<span class="caption-subject bold uppercase" style="float: right;">
+								<i class="fa fa-refresh"></i>
+								<select class="caption-subject bold uppercase" id="intervals">
+									<option value="5">5 sec</option>
+									<option value="10" selected="selected">10 sec</option>
+									<option value="15">15 sec</option>
+									<option value="30">30 sec</option>
+									<option value="60">1 min</option>
+								</select> :: Auto-refresh in 
+								<div id="countdowntimer" style="display: inline-block;">
+									<span id="timer"></span>
+								</div>
+								<a id="pause" class="btn btn-default btn-circle" title="Pause"></a>
+								<button id="exportBtn" class="new-button">↓</button>
+								<button id="sortBtn" class="new-button">+</button>
+							</span>
+						</span>
+					</div>
+					<div id="buttons" style="margin-bottom: 5px; width: 100%; text-align: center;">
+						<div class="btn-group btn-group-divided" data-toggle="buttons">
+							<input id="apply-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Apply" style="width: 90px;">
+							<input id="unapply-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Unapply" style="width: 90px; margin-left: 5px;">
+							<input id="toggle-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Toggle" style="width: 90px; margin-left: 5px;">
+							<input id="invert-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Invert" style="width: 90px; margin-left: 5px;">
+							<input id="remove-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Remove" style="width: 90px; margin-left: 5px;">
+							<input id="save-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Save" style="width: 90px; margin-left: 5px;">
+							<input id="reload-filters" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Reload" style="width: 90px; margin-left: 5px;">
+							<?php if ($this->role == 1) {
+							?><input id="delete-records" class="btn btn-outline btn-circle dark btn-sm black"
+								type="button" value="Delete Records" style="width: 130px; margin-left: 5px;">
+						<?php }
+						?></div>
+					</div>
+					<div class="col-sm-12 search-inputs">
+						<div class="form-horizontal">
+							<div class="form-body">
+								<div class="form-group form-md-line-input">
+									<label class="col-sm-2 control-label">Set Field</label>
+									<div class="col-sm-4">
+										<select id="set-field" style="width: 100%;">
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-sm-12 search-inputs">
+						<div class="form-horizontal">
+							<div class="form-body">
+								<div class="form-group form-md-line-input">
+									<label class="col-sm-2 control-label">Set Type</label>
+									<div class="col-sm-4">
+										<select id="set-type" style="width: 100%;">
+											<option value="is one of">is one of</option>
+											<option value="is not one of">is not one of</option>
+										</select>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-sm-12 search-inputs">
+						<div class="form-horizontal">
+							<div class="form-body">
+								<div class="form-group form-md-line-input">
+									<label class="col-sm-2 control-label">Set Values</label>
+									<div class="col-sm-4">
+										<select multiple id="set-values" style="width: 100%;"></select>
+									</div>
+									<div class="col-sm-2">
+										<div class="btn-group" data-toggle="buttons">
+											<input id="add-inputs" class="btn btn-outline btn-circle dark btn-sm black"
+												type="button" value="Add" style="width: 90px;">
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div class="col-sm-12 search-inputs">
+						<hr style="margin: 0px; border: none; height: 1px; background-color: #333;">
+					</div>
+					<div class="col-sm-12 search-inputs">
+						<div class="form-horizontal">
+							<div class="form-body">
+								<div class="form-group form-md-line-input">
+									<label class="col-sm-2 control-label">Set Time Range</label>
+									<div class="col-sm-3">
+										<?php echo $firsttime; ?>
+										<div class="form-control-focus"></div>
+									</div>
+									<div class="col-sm-1" style="padding-left: 5px; padding-right: 0px;">
+										<div class="btn-group" data-toggle="buttons">
+											<input id="empty-gte" class="btn btn-outline btn-circle dark btn-sm black"
+												type="button" value="Empty" style="width: 70px;">
+										</div>
+									</div>
+									<div class="col-sm-3">
+										<?php echo $lasttime; ?>
+										<div class="form-control-focus"></div>
+									</div>
+									<div class="col-sm-1" style="padding-left: 5px; padding-right: 0px;">
+										<div class="btn-group" data-toggle="buttons">
+											<input id="empty-lte" class="btn btn-outline btn-circle dark btn-sm black"
+												type="button" value="Empty" style="width: 70px;">
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div id="div-filters" class="portlet-body">
+					<div id="div-3" class="div-3">
+						<div id="filter-grid" class="ag-theme-alpine" style="width: 100%; height: 300px;"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-sm-12">
+			<div class="portlet light" style="margin-bottom: 4px;">
+				<div class="portlet-title" style="margin-bottom: -10px; min-height: 46px;">
+					<div class="caption" style="width: 1100px;">
+						<div class="caption-subject bold uppercase" style="display: inline-block;">
+							<i class="fa fa-book"></i> Data :: 
+							<select id="indices" class="caption-subject bold uppercase">
+							</select> :: <span id="time"></span> :: <span id="total-hits">0 records</span>
+						</div>
+					</div>
+					<button id="toggleFieldsBtn" class="btn btn-primary" style="float: right;">Toggle Fields</button>
+				</div>
+				<div id="hidden-chart" style="display: none;"></div>
+				<div id="div-main" class="portlet-body">
+					<div id="fieldSelector" style="display: none;">
+						<!-- Field checkboxes will be dynamically added here -->
+					</div>
+					<div style="width: 100%; height: 540px;">
+						<div id="div-1" class="div-1" style="width: 154px; display: none;">
+							<div id="div-toggle-fields">
+								<div class="bold" style="height: 100%; padding-top: 5px;">Available Fields</div>
+							</div>
+							<div class="dt-button-collection">
+								<?php
+								$id = 0;
+								$this->fields = array_values(array_diff($this->fields, ['@timestamp']));
+								foreach ($this->fields as $field) {
+									$id ++;
+									if (in_array($field, $this->fieldsToDisplay)) {
+								?>
+								<div class="dt-button active" type="button" column=<?php echo $id; ?>>
+									<span title="<?php echo $field; ?>"><?php echo $field; ?></span>
+								</div>
+								<?php } else { ?>
+								<div class="dt-button" type="button" column=<?php echo $id; ?>>
+									<span title="<?php echo $field; ?>"><?php echo $field; ?></span>
+								</div>
+								<?php } } ?>
+							</div>
+						</div>
+						<div id="div-2" class="div-2" style="width: 100%; display: inline-block">
+							<div id="data-grid" class="ag-theme-alpine" style="width: 100%; height: 500px;"></div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</form>
+
+<div id="sortPopup" class="popover hidden">
+    <div class="popover-content">
+        <div class="popover-inner">
+            <div class="popover-title">Sort Options</div>
+            <div class="popover-inner-content">
+                <div id="sortOptions">
+                    <!-- Sort options will be dynamically added here -->
+                </div>
+                <button id="applySortBtn" class="btn btn-primary">Apply Sort</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+// Định nghĩa 6 trường mặc định
+var defaultFields = ['LogTime', 'SenderID', 'SenderIp', 'Action', 'SrcIp', 'DstIp'];
+
+var ajaxCount = 1;
+var applied = false;
+var chosenField = null;
+var chosenType = null;
+var columnDefinitions = <?php echo json_encode($this->columnDefinitions); ?>;
+var currentDuration = $('#intervals').val();
+var currentIndex = <?php echo json_encode($this->index); ?>;
+var currentLength = 100;
+var editingRowData = null;
+var fields = <?php echo json_encode($this->fields); ?>;
+var fieldsToHide = <?php echo json_encode($this->fieldsToHide); ?>;
+var fieldsToDisplay = <?php echo json_encode($this->fieldsToDisplay); ?>;
+var indexList = $('#indices');
+var indices = <?php echo json_encode($this->indices); ?>;
+var inputField = null;
+var inputType = null;
+var inputValues = [];
+var totalHits = <?php echo json_encode($this->totalHits); ?>;
+
+var currentData = [];
+var currentDisplayedFields = fields.map(field => defaultFields.includes(field));
+
+var hiddenChart = am4core.create("hidden-chart", am4charts.XYChart);
+hiddenChart.language.locale = am4lang_vi_VN;
+hiddenChart.logo.disabled = true;
+
+function buttonCellRenderer(params) {
+    return `
+        <button class="cell-button export-button" data-action="export" data-row-id="${params.node.id}">↓</button>
+        <button class="cell-button sort-button" data-action="sort" data-row-id="${params.node.id}">+</button>
+    `;
+}
+
+var columnDefs = [
+    {
+        headerName: 'Actions',
+        field: 'actions',
+        cellRenderer: buttonCellRenderer,
+        width: 100,
+        sortable: false,
+        filter: false
+    }
+].concat(fields.map(function(field) {
+    return { 
+        headerName: field, 
+        field: field,
+        hide: !defaultFields.includes(field)
+    };
+}));
+
+var gridOptions = {
+    columnDefs: columnDefs,
+    defaultColDef: {
+        flex: 1,
+        minWidth: 100,
+        resizable: true,
+    },
+    rowData: [],
+    pagination: false,
+    suppressColumnVirtualisation: true,
+    suppressRowVirtualisation: true,
+    getRowId: params => {
+        return String(params.data.id || params.data._id || generateUniqueId());
+    },
+    onGridReady: params => {
+        gridOptions.api = params.api;
+        gridOptions.columnApi = params.columnApi;
+        if (!gridOptions.api || !gridOptions.columnApi) {
+            console.error('Grid APIs not initialized');
+            return;
+        }
+
+        console.log('Data Grid is ready');
+        setTimeout(() => {
+            if (gridOptions.columnApi) {
+                console.log('Column definitions:', gridOptions.columnApi.getColumnDefs());
+                console.log('Visible columns:', gridOptions.columnApi.getAllDisplayedColumns());
+            }
+            getData(currentIndex, null, null);
+            resizeGrid();
+        }, 100);
+    }
+};
+
+// Định nghĩa filterGridOptions
+var filterGridOptions = {
+    columnDefs: [
+        { field: 'field', headerName: 'Field' },
+        { field: 'type', headerName: 'Type' },
+        { field: 'value', headerName: 'Value' }
+    ],
+    defaultColDef: {
+        flex: 1,
+        minWidth: 100,
+        resizable: true,
+    },
+    rowData: [],
+    pagination: false,
+    suppressColumnVirtualisation: true,
+    suppressRowVirtualisation: true
+};
+
+function initializeGrids() {
+    if (typeof agGrid === 'undefined') {
+        console.error('AG Grid library not loaded');
+        return;
+    }
+
+    var filterGridElement = document.querySelector('#filter-grid');
+    if (filterGridElement) new agGrid.Grid(filterGridElement, filterGridOptions);
+
+    var dataGridElement = document.querySelector('#data-grid');
+    if (dataGridElement) new agGrid.Grid(dataGridElement, gridOptions);
+}
+
+function resizeGrid() {
+    if (!gridOptions.api) {
+        console.warn('Grid API not initialized, delaying resize');
+        setTimeout(resizeGrid, 100);
+        return;
+    }
+
+    var gridElement = document.querySelector('#data-grid');
+    if (gridElement && gridElement.offsetWidth > 0) {
+        gridOptions.api.sizeColumnsToFit();
+    } else {
+        console.warn('Grid container has zero width, delaying resize');
+        setTimeout(resizeGrid, 100);
+    }
+}
+
+window.addEventListener('resize', resizeGrid);
+
+function updateGridData(data) {
+    console.log('Updating grid data:', data);
+    if (!gridOptions.api || !gridOptions.columnApi) {
+        console.error('Grid APIs not initialized');
+        return;
+    }
+
+    if (data && data.length > 0) {
+        gridOptions.api.setRowData(data);
+    } else {
+        gridOptions.api.setRowData([{ message: 'No data available' }]);
+    }
+    console.log('Row count after update:', gridOptions.api.getDisplayedRowCount());
+    if (gridOptions.columnApi) {
+        console.log('Visible columns after update:', gridOptions.columnApi.getAllDisplayedColumns().map(col => col.getColId()));
+        console.log('Column state after update:', gridOptions.columnApi.getColumnState());
+    }
+    resizeGrid();
+}
+
+function generateUniqueId() {
+    return 'id_' + Math.random().toString(36).substr(2, 9);
+}
+
+function toggleColumnVisibility(field, visible) {
+    console.log('Toggling visibility for field:', field, 'to:', visible);
+    if (!gridOptions.columnApi) {
+        console.error('Column API not initialized');
+        return;
+    }
+
+    gridOptions.columnApi.setColumnVisible(field, visible);
+    updateTableWidth();
+}
+
+function updateTableWidth() {
+    var visibleFieldsCount = currentDisplayedFields.filter(Boolean).length;
+    if (visibleFieldsCount === 0) return;
+    console.log('Visible fields count:', visibleFieldsCount);
+    var tableWidth = Math.max(visibleFieldsCount * 150, 500);
+    $('#data-grid').css('width', tableWidth + 'px');
+    resizeGrid();
+}
+
+function getData(index, from, to) {
+    console.log('Getting data for index:', index, 'from:', from, 'to:', to);
+    $.ajax({
+        url: '/your-data-endpoint',
+        method: 'GET',
+        data: { index: index, from: from, to: to },
+        success: function(response) {
+            console.log('Data received:', response);
+            updateGridData(response.data || []);
+        },
+        error: function(error) {
+            console.error('Error fetching data:', error);
+            updateGridData([]);
+        }
+    });
+}
+
+function showNoData() {
+    if (!gridOptions.api) {
+        console.error('Grid API not initialized');
+        return;
+    }
+
+    gridOptions.api.setRowData([{ message: 'No data matching your search' }]);
+}
+
+function exportRowToCSV(rowData) {
+    if (!rowData) {
+        console.error('No row data to export');
+        return;
+    }
+
+    let csvContent = "data:text/csv;charset=utf-8,";
+    
+    // Add headers
+    csvContent += Object.keys(rowData).join(",") + "\r\n";
+    
+    // Add row data
+    csvContent += Object.values(rowData).map(value => `"${value}"`).join(",");
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "exported_row.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function showSortPopup(rowNode) {
+    // Implement your sort popup logic here
+    console.log('Showing sort popup for row:', rowNode.data);
+    // You might want to populate #sortOptions with the available sorting options
+    $('#sortPopup').removeClass('hidden');
+}
+
+function applySorting() {
+    // Implement your sorting logic here
+    console.log('Applying sorting');
+    // You might want to get the selected sorting options and apply them to the grid
+    $('#sortPopup').addClass('hidden');
+}
+
+$(document).ready(function() {
+    console.log('Document ready');
+    
+    if (typeof agGrid === 'undefined') {
+        console.error('AG Grid library not loaded');
+    } else {
+        console.log('AG Grid library loaded successfully');
+        initializeGrids();
+    }
+
+    $(document).on('click', '.cell-button', function(e) {
+        e.stopPropagation();
+        var action = $(this).data('action');
+        var rowId = $(this).data('row-id');
+        var rowNode = gridOptions.api ? gridOptions.api.getRowNode(rowId) : null;
+        
+        if (action === 'export' && rowNode) {
+            exportRowToCSV(rowNode.data);
+        } else if (action === 'sort' && rowNode) {
+            showSortPopup(rowNode);
+        }
+    });
+
+    $('#applySortBtn').on('click', function() {
+        applySorting();
+    });
+
+    $('#toggleFieldsBtn').on('click', function() {
+        var fieldSelector = $('#fieldSelector');
+        if (fieldSelector.is(':visible')) {
+            fieldSelector.hide();
+        } else {
+            populateFieldSelector();
+            fieldSelector.show();
+        }
+    });
+
+    populateFieldSelector();
+    getData(currentIndex, null, null);
+});
+
+function populateFieldSelector() {
+    var fieldSelector = $('#fieldSelector');
+    fieldSelector.empty();
+    fields.forEach(function(field, index) {
+        var isChecked = defaultFields.includes(field);
+        var checkbox = $('<input>').attr({
+            type: 'checkbox',
+            id: 'field-' + index,
+            class: 'checkbox-input',
+            value: field
+        }).prop('checked', isChecked);
+
+        var label = $('<label>').attr('for', 'field-' + index).text(field);
+
+        var wrapper = $('<div>').addClass('checkbox-wrapper')
+            .append(checkbox)
+            .append(label);
+
+        fieldSelector.append(wrapper);
+    });
+
+    $('.checkbox-input').on('change', function() {
+        var field = $(this).val();
+        var isChecked = $(this).prop('checked');
+        
+        // Ensure at least one field is always checked
+        var checkedFields = $('.checkbox-input:checked').length;
+        if (!isChecked && checkedFields === 0) {
+            $(this).prop('checked', true);
+            alert('At least one field must be selected');
+            return;
+        }
+        
+        toggleColumnVisibility(field, isChecked);
+        currentDisplayedFields[fields.indexOf(field)] = isChecked;
+        updateTableWidth();
+    });
+}
+
+// ... (Các hàm khác như exportRowToCSV, showSortPopup, applySorting giữ nguyên)
+</script>
+<?php echo $this->render($this->toolbar . 'js.index.phtml'); ?>
+<?php echo $this->render($this->toolbar . 'js.export.events.phtml'); ?>
+<?php echo $this->render($this->toolbar . 'js.export.event.phtml'); ?>

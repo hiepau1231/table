@@ -1,0 +1,667 @@
+<style>
+    .ag-row-hover {
+        background-color: #dfdfff !important;
+    }
+    .ag-column-hover {
+        background-color: #dfffdf;
+    }
+</style>
+<script type="text/javascript">
+    indices.forEach(function (index) {
+        indexList.append('<option value="' + index + '">' + index + '</option>');
+    });
+    indexList.val(currentIndex);
+
+    var tmpFields = fields.concat();
+    tmpFields.sort();
+    tmpFields.forEach(function (field) {
+        if (field != 'LogTime') {
+            $('#set-field').append('<option value="' + field + '">' + field + '</option>');
+        }
+    });
+
+    // Store AJAX requests
+    $.xhrPool = [];
+    $.xhrPool.abortAll = function () {
+        $(this).each(function (index, request) {
+            request.abort();
+        });
+        $.xhrPool.length = 0;
+    }
+
+    function showMessage(message, isError) {
+        var div = (isError)
+            ? $('<div class="alert alert-danger alert-dismissable"></div>')
+            : $('<div class="alert alert-success alert-dismissable"></div>');
+        var button = $('<button type="button" class="close" data-dismiss="alert" aria-hidden="true"></button>');
+        div.append(button);
+        var text = '';
+        if ($.isArray(message)) {
+            message.forEach(function (message) {
+                text += '- ' + message + '<br>';
+            });
+            div.append(text.substring(0, text.lastIndexOf('<br>')));
+        }
+        else {
+            div.append(message);
+        }
+        $('#div-main').prepend(div);
+    }
+
+    function getValues(index, field) {
+        $.ajax({
+            url: '/default/tables/getValues',
+            cache: false,
+            data: {
+                index: index,
+                field: field
+            },
+            method: 'GET',
+            beforeSend: function (xhr) {
+                $.xhrPool.push(xhr);
+            },
+            error: function (xhr, status, error) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage('Something wrong happened! Code: 1', true);
+            },
+            success: function (result, status, xhr) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+
+                var valueList = $('#set-values');
+                valueList.empty();
+                if (result != null) {
+                    result.sort();
+                    result.forEach(function (index) {
+                        valueList.append('<option value="' + index + '">' + index + '</option>');
+                    });
+                }
+                valueList.trigger('change');
+            }
+        })
+    }
+
+    $('#add-inputs').on('click', function () {
+        isFiltersShown();
+
+        if ((inputField == null) || (inputType == null) || (inputValues.length == 0)) {
+            return;
+        }
+
+        var newRow = {
+            field: inputField,
+            type: inputType,
+            values: inputValues.join(', '),
+            actions: ''
+        };
+
+        filterGridApi.applyTransaction({ add: [newRow] });
+
+        $('#set-field').val(null).trigger('change');
+        $('#set-type').val(null).trigger('change');
+        $('#set-values').val(null).trigger('change');
+        $('#state').text('Unapplied/Filters Changed');
+    });
+
+    $('#set-field').select2({
+        placeholder: '---Choose one field---'
+    });
+    $('#set-field').on('change.select2', function (event) {
+        inputValues = [];
+        inputField = null;
+
+        var selecteds = $(this).select2('data');
+        if (selecteds.length > 0) {
+            inputField = selecteds[0].text;
+            getValues(currentIndex, inputField);
+        }
+        else {
+            $('#set-values').empty().trigger('change');
+        }
+    });
+
+    $('#set-type').select2({
+        placeholder: '---Choose one type---'
+    });
+    $('#set-type').on('change.select2', function (event) {
+        inputType = null;
+
+        var selecteds = $(this).select2('data');
+        if (selecteds.length > 0) {
+            inputType = selecteds[0].text;
+        }
+    });
+
+    $('#set-values').select2({
+        multiple: true,
+        placeholder: '---Choose some values---',
+        tags: true
+    });
+    $('#set-values').on('change.select2', function (event) {
+        inputValues = [];
+
+        var selecteds = $(this).select2('data');
+        if (selecteds.length > 0) {
+            selecteds.forEach(function (selected) {
+                inputValues.push(selected.text);
+            });
+        }
+    });
+
+    $('#set-field').val('message').trigger('change');
+    $('#set-type').val('is one of').trigger('change');
+
+    function esc(text) {
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    // Initialize ag-Grid for filter table
+    var filterColumnDefs = [
+        { headerName: "Field", field: "field" },
+        { headerName: "Type", field: "type" },
+        { headerName: "Values", field: "values" },
+        {
+            headerName: "Actions",
+            field: "actions",
+            cellRenderer: function(params) {
+                return '<button onclick="removeFilter(\'' + params.node.id + '\')">Remove</button>';
+            }
+        }
+    ];
+
+    var filterGridOptions = {
+        columnDefs: filterColumnDefs,
+        rowData: [],
+        onGridReady: function(params) {
+            params.api.sizeColumnsToFit();
+        }
+    };
+
+    function removeFilter(id) {
+        filterGridApi.applyTransaction({ remove: [{ id: id }] });
+        $('#state').text('Unapplied/Filters Changed');
+    }
+
+    // Initialize ag-Grid for data table
+    var dataColumnDefs = fields.map(function(field) {
+        return { headerName: field, field: field };
+    });
+
+    var dataGridOptions = {
+        columnDefs: dataColumnDefs,
+        rowData: [],
+        onGridReady: function(params) {
+            params.api.sizeColumnsToFit();
+        },
+        getRowId: function(params) {
+            return params.data.id || params.data._id || generateUniqueId();
+        }
+    };
+
+    function getData(index, oldScrollId, filters, timeRangeFilters = null) {
+        if (applied == false) {
+            filters = timeRangeFilters;
+        }
+
+        $.ajax({
+            url: '/default/tables/getdata',
+            cache: false,
+            data: {
+                index: index,
+                filters: filters,
+                scrollId: oldScrollId
+            },
+            method: 'GET',
+            beforeSend: function (xhr) {
+                $.xhrPool.push(xhr);
+            },
+            error: function (xhr, status, error) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage('Something wrong happened! Code: 2', true);
+            },
+            success: function (result, status, xhr) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+
+                var gte = $('#firsttime').val();
+                var lte = $('#lasttime').val();
+                if (gte != '' && lte == '') {
+                    $('#time').text('from ' + gte);
+                }
+                else if (gte == '' && lte != '') {
+                    $('#time').text('until ' + lte);
+                }
+                else if (gte != '' && lte != '') {
+                    $('#time').text('from ' + gte + ' :: until ' + lte);
+                }
+                else {
+                    $('#time').text('until now');
+                }
+
+                var newScrollId = String(result[0]);
+                $('#total-hits').text(result[1] + ' records');
+
+                if (newScrollId != '1') {
+                    if (!result[2]) {
+                        dataGridApi.setRowData([]);
+                        currentData = [];
+                    }
+                    else {
+                        dataGridApi.applyTransaction({ add: result[2] });
+                        currentData = result[2];
+                    }
+                } else {
+                    if (!result[2]) {
+                        dataGridApi.setRowData([]);
+                        currentData = [];
+                    }
+                    else {
+                        dataGridApi.setRowData(result[2]);
+                        currentData = result[2];
+                        ajaxCount = 1;
+                    }
+                }
+                showNoData();
+            }
+        })
+    }
+
+    function copyText(textValue) {
+        if (textValue != '-') {
+            const e = document.createElement('textarea');
+            e.value = textValue;
+            e.setAttribute('readonly', '');
+            e.style.position = 'absolute';
+            e.style.left = '-9999px';
+            document.body.appendChild(e);
+            const selected = document.getSelection().rangeCount > 0 ? document.getSelection().getRangeAt(0) : false;
+            e.select();
+            document.execCommand('copy');
+            document.body.removeChild(e);
+            if (selected) {
+                document.getSelection().removeAllRanges();
+                document.getSelection().addRange(selected);
+            }
+        }
+    }
+
+    function createFilter(field, value, isFilterIn) {
+        isFiltersShown();
+
+        if (value != '-') {
+            var newRow = {
+                field: field,
+                type: isFilterIn ? 'is one of' : 'is not one of',
+                values: value,
+                actions: ''
+            };
+
+            filterGridApi.applyTransaction({ add: [newRow] });
+
+            copyText(value);
+            $('#state').text('Unapplied/Filters Changed');
+        }
+    }
+
+    function isFiltersShown() {
+        if($('.arrow-filters').hasClass('fa-chevron-circle-down')) {
+            $('.arrow-filters').trigger('click');
+        }
+    }
+
+    function changeOption(id, optionType) {
+        var rowNode = filterGridApi.getRowNode(id);
+        var data = rowNode.data;
+
+        switch (optionType) {
+            case 'toggle-enabled':
+                data.enabled = !data.enabled;
+                break;
+            case 'toggle-type':
+                data.type = data.type === 'is one of' ? 'is not one of' : 'is one of';
+                break;
+        }
+
+        filterGridApi.applyTransaction({ update: [data] });
+        $('#state').text('Unapplied/Filters Changed');
+    }
+
+    $('#toggle-filters').on('click', function () {
+        filterGridApi.forEachNode(function(rowNode) {
+            changeOption(rowNode.id, 'toggle-enabled');
+        });
+    });
+
+    $('#invert-filters').on('click', function () {
+        filterGridApi.forEachNode(function(rowNode) {
+            changeOption(rowNode.id, 'toggle-type');
+        });
+    });
+
+    $('#apply-filters').on('click', function () {
+        if ($('.portlet-body:has(#div-3)').is(':visible')) {
+            $('.arrow-filters').trigger('click');
+        }
+
+        $.xhrPool.abortAll();
+
+        var filters = [];
+        filterGridApi.forEachNode(function(rowNode) {
+            if (rowNode.data.enabled) {
+                filters.push({
+                    field: rowNode.data.field,
+                    type: rowNode.data.type,
+                    values: rowNode.data.values.split(', ')
+                });
+            }
+        });
+
+        var firsttime = $('#firsttime').val();
+        var lasttime = $('#lasttime').val();
+        if (firsttime != '') {
+            filters.push({
+                field: 'firsttime',
+                type: 'is',
+                value: firsttime
+            });
+        }
+        if (lasttime != '') {
+            filters.push({
+                field: 'lasttime',
+                type: 'is',
+                value: lasttime
+            });
+        }
+
+        dataGridApi.setRowData([]);
+        applied = true;
+        getData(currentIndex, null, filters);
+        $('#state').text('Applied');
+    });
+
+    $('#unapply-filters').on('click', function () {
+        if ($('.portlet-body:has(#div-3)').is(':visible')) {
+            $('.arrow-filters').trigger('click');
+        }
+
+        $.xhrPool.abortAll();
+
+        dataGridApi.setRowData([]);
+
+        var timeRangeFilters = [];
+        var firsttime = $('#firsttime').val();
+        var lasttime = $('#lasttime').val();
+        if (firsttime != '') {
+            timeRangeFilters.push({
+                field: 'firsttime',
+                type: 'is',
+                value: firsttime
+            });
+        }
+        if (lasttime != '') {
+            timeRangeFilters.push({
+                field: 'lasttime',
+                type: 'is',
+                value: lasttime
+            });
+        }
+
+        applied = false;
+        getData(currentIndex, null, null, timeRangeFilters);
+        $('#state').text('Unapplied');
+    });
+
+    function saveFilters(index, filters) {
+        $.ajax({
+            url: '/default/tables/savefilters',
+            cache: false,
+            data: {
+                index: index,
+                filters: filters
+            },
+            method: 'POST',
+            beforeSend: function (xhr) {
+                $.xhrPool.push(xhr);
+            },
+            error: function (xhr, status, error) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage('Something wrong happened! Code: 3', true);
+            },
+            success: function (result, status, xhr) {
+                var i = $.xhrPool.indexOf(result);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage(result, false);
+            }
+        })
+    }
+
+    $('#save-filters').on('click', function () {
+        var filters = [];
+        filterGridApi.forEachNode(function(rowNode) {
+            filters.push({
+                field: rowNode.data.field,
+                type: rowNode.data.type,
+                values: rowNode.data.values.split(', '),
+                enabled: rowNode.data.enabled
+            });
+        });
+
+        filters.push({
+            field: 'time',
+            firsttime: $('#firsttime').val() || '',
+            lasttime: $('#lasttime').val() || ''
+        });
+
+        saveFilters(currentIndex, filters);
+    });
+
+    function displayFilters(filters) {
+        filterGridApi.setRowData([]);
+
+        filters.forEach(function (filter) {
+            if (filter.field === 'time') {
+                $('#firsttime').val(filter.firsttime);
+                $('#lasttime').val(filter.lasttime);
+            } else {
+                filterGridApi.applyTransaction({
+                    add: [{
+                        field: filter.field,
+                        type: filter.type,
+                        values: filter.values.join(', '),
+                        enabled: filter.enabled,
+                        actions: ''
+                    }]
+                });
+            }
+        });
+
+        $('#state').text('Unapplied/Filters Reloaded');
+    }
+
+    function reloadFilters(index) {
+        $.ajax({
+            url: '/default/tables/reloadfilters',
+            cache: false,
+            data: {
+                index: index
+            },
+            method: 'GET',
+            beforeSend: function (xhr) {
+                $.xhrPool.push(xhr);
+            },
+            error: function (xhr, status, error) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage('Something wrong happened! Code: 4', true);
+            },
+            success: function (result, status, xhr) {
+                var i = $.xhrPool.indexOf(result);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+
+                if (result != ['null']) {
+                    if ($.isArray(result)) {
+                        displayFilters(result);
+                    }
+                    else {
+                        showMessage(result, true);
+                    }
+                }
+                else {
+                    showMessage(result, true);
+                }
+            }
+        })
+    }
+
+    $('#reload-filters').on('click', function () {
+        reloadFilters(currentIndex);
+    });
+
+    function deleteRecords(filters) {
+        $.ajax({
+            url: '/default/tables/deleterecords',
+            cache: false,
+            data: {
+                index: currentIndex,
+                filters: filters
+            },
+            method: 'GET',
+            beforeSend: function (xhr) {
+                $.xhrPool.push(xhr);
+            },
+            error: function (xhr, status, error) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                showMessage('Something wrong happened! Code: 5', true);
+            },
+            success: function (result, status, xhr) {
+                var i = $.xhrPool.indexOf(xhr);
+                if (i > -1) {
+                    $.xhrPool.splice(i, 1);
+                }
+                if (result != 'RO') {
+                    dataGridApi.setRowData([]);
+                    $('#total-hits').text(result);
+                }
+                else {
+                    $('#total-hits').text('Error: Index is read-only');
+                }
+            }
+        })
+    }
+
+    $('#delete-records').on('click', function () {
+        $.confirm({
+            title: 'Warning: You are about to delete records!',
+            content:
+                'Read the following notice or else unwanted deletion may happen:' + '<br>' +
+                '1. Check filters carefully.' + '<br>' +
+                '2. Do not forget to apply edited filters.' + '<br>' +
+                '3. Deleted records cannot be restored.' + '<br>' +
+                '4. Proceed at your own risk.',
+            buttons: {
+                'proceed': function () {
+                    var filters = [];
+                    filterGridApi.forEachNode(function(rowNode) {
+                        if (rowNode.data.enabled) {
+                            filters.push({
+                                field: rowNode.data.field,
+                                type: rowNode.data.type,
+                                values: rowNode.data.values.split(', ')
+                            });
+                        }
+                    });
+
+                    var firsttime = $('#firsttime').val();
+                    var lasttime = $('#lasttime').val();
+                    if (firsttime != '') {
+                        filters.push({
+                            field: 'firsttime',
+                            type: 'is',
+                            value: firsttime
+                        });
+                    }
+                    if (lasttime != '') {
+                        filters.push({
+                            field: 'lasttime',
+                            type: 'is',
+                            value: lasttime
+                        });
+                    }
+                    deleteRecords(filters);
+                },
+                'cancel': function () {
+                    return;
+                }
+            }
+        });
+    });
+
+    $('.arrow-filters').on('click', function () {
+        if($(this).hasClass('fa-chevron-circle-up')) {
+            $(this).removeClass('fa-chevron-circle-up').addClass('fa-chevron-circle-down');
+            $('#buttons').hide();
+            $('.search-inputs').hide();
+            $('.portlet-body:has(#div-3)').hide();
+        }
+        else {
+            $(this).removeClass('fa-chevron-circle-down').addClass('fa-chevron-circle-up');
+            $('#buttons').show();
+            $('.search-inputs').show();
+            $('.portlet-body:has(#div-3)').show();
+            filterGridApi.sizeColumnsToFit();
+        }
+    });
+
+    $('.datetime-picker').datetimepicker({
+        format: 'yyyy-mm-dd/hh:ii',
+        minuteStep: 1,
+        minView: 'hour',
+        startView: 'hour',
+        todayBtn: true,
+        todayHighlight: true
+    });
+
+    $("#empty-gte").on('click', function () {
+        $('#firsttime').val('').datetimepicker('update');
+    });
+
+    $("#empty-lte").on('click', function () {
+        $('#lasttime').val('').datetimepicker('update');
+    });
+
+    $(window).on('beforeunload', function () {
+        $.xhrPool.abortAll();
+    });
+
+    $(document).ready(function () {
+        $('#index-name').text(currentIndex);
+        getData(currentIndex, null, null);
+        $('.arrow-filters').trigger('click');
+    });
+</script>
